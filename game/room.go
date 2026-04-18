@@ -16,8 +16,7 @@ type Player struct {
 	UserID int
 	Conn   *websocket.Conn
 	Card   *models.BingoCard
-	Send   chan []byte // ✅ NEW
-
+	Send   chan []byte
 
 	Connected bool
 	LastSeen  time.Time
@@ -29,14 +28,32 @@ type Room struct {
 	UsedCards map[int]bool
 	Mutex     sync.Mutex
 
-	State     string // "waiting", "countdown", "playing"
+	State     string
 	Countdown int
 
 	Numbers []int
 	Called  []int
 }
 
-const MinPlayers = 1
+const MinPlayers = 2
+
+// ==========================
+// PLAYER SEND HELPER
+// ==========================
+func (p *Player) SendJSON(event string, data interface{}) {
+	msg := map[string]interface{}{
+		"type": event,
+		"data": data,
+	}
+
+	bytes, _ := json.Marshal(msg)
+
+	select {
+	case p.Send <- bytes:
+	default:
+		log.Println("⚠️ Dropping message for:", p.UserID)
+	}
+}
 
 // ==========================
 // INIT
@@ -57,7 +74,7 @@ func NewRoom(stake float64) *Room {
 // HELPERS
 // ==========================
 func (r *Room) getActivePlayers() []*Player {
-	players := []*Player{}
+	var players []*Player
 	for _, p := range r.Players {
 		if p.Connected {
 			players = append(players, p)
@@ -66,13 +83,17 @@ func (r *Room) getActivePlayers() []*Player {
 	return players
 }
 
+func (r *Room) enoughPlayers() bool {
+	return len(r.getActivePlayers()) >= MinPlayers
+}
+
 func (r *Room) allPlayersHaveCards() bool {
 	for _, p := range r.Players {
 		if p.Connected && p.Card == nil {
 			return false
 		}
 	}
-	return len(r.getActivePlayers()) >= MinPlayers
+	return true
 }
 
 // ==========================
@@ -81,7 +102,6 @@ func (r *Room) allPlayersHaveCards() bool {
 func (r *Room) AddPlayer(p *Player) {
 	r.Mutex.Lock()
 
-	// 🔄 RECONNECT
 	if existing, ok := r.Players[p.UserID]; ok {
 		existing.Conn = p.Conn
 		existing.Connected = true
@@ -89,26 +109,21 @@ func (r *Room) AddPlayer(p *Player) {
 
 		r.Mutex.Unlock()
 
-		log.Println("🔄 Player reconnected:", p.UserID)
+		log.Println("🔄 Reconnected:", p.UserID)
 
 		r.SendAvailableCards(existing)
 		r.SendTakenCards(existing)
 
 		if existing.Card != nil {
-			existing.Conn.WriteJSON(map[string]interface{}{
-				"type": "card_selected",
-				"data": existing.Card,
-			})
+			existing.SendJSON("card_selected", existing.Card)
 		}
 
 		go BroadcastLobby()
 		return
 	}
 
-	// 🆕 NEW PLAYER
 	p.Connected = true
 	p.LastSeen = time.Now()
-
 	r.Players[p.UserID] = p
 
 	count := len(r.Players)
@@ -124,9 +139,7 @@ func (r *Room) AddPlayer(p *Player) {
 
 	go BroadcastLobby()
 
-	// 🚀 ONLY START IF READY
-	if count >= MinPlayers && state == "waiting" && r.allPlayersHaveCards() {
-		log.Println("🚀 Starting countdown...")
+	if state == "waiting" && r.enoughPlayers() && r.allPlayersHaveCards() {
 		go r.StartCountdown()
 	}
 }
@@ -148,7 +161,6 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 	}
 
 	var selected *models.BingoCard
-
 	for _, c := range storage.Cards {
 		if c.CardID == cardID {
 			tmp := c
@@ -164,17 +176,12 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 	player.Card = selected
 	r.UsedCards[cardID] = true
 
-	player.Conn.WriteJSON(map[string]interface{}{
-		"type": "card_selected",
-		"data": selected,
-	})
-
+	player.SendJSON("card_selected", selected)
 	go r.Broadcast("card_taken", cardID)
 
 	log.Printf("✅ Player %d took card %d\n", userID, cardID)
 
-	// 🔥 CHECK IF ALL READY → START
-	if r.State == "waiting" && r.allPlayersHaveCards() {
+	if r.State == "waiting" && r.enoughPlayers() && r.allPlayersHaveCards() {
 		go r.StartCountdown()
 	}
 
@@ -211,7 +218,7 @@ func (r *Room) CleanupDisconnected() {
 				}
 
 				delete(r.Players, id)
-				log.Println("🗑 Removed inactive:", id)
+				log.Println("🗑 Removed:", id)
 			}
 		}
 
@@ -221,7 +228,7 @@ func (r *Room) CleanupDisconnected() {
 }
 
 // ==========================
-// BROADCAST
+// BROADCAST (SAFE)
 // ==========================
 func (r *Room) Broadcast(event string, data interface{}) {
 	msg := map[string]interface{}{
@@ -232,18 +239,20 @@ func (r *Room) Broadcast(event string, data interface{}) {
 	bytes, _ := json.Marshal(msg)
 
 	r.Mutex.Lock()
-	players := make([]*Player, 0, len(r.Players))
+	var players []*Player
 	for _, p := range r.Players {
-		players = append(players, p)
+		if p.Connected {
+			players = append(players, p)
+		}
 	}
 	r.Mutex.Unlock()
 
 	for _, p := range players {
-		if p.Conn == nil || !p.Connected {
-			continue
+		select {
+		case p.Send <- bytes:
+		default:
+			log.Println("⚠️ Dropping broadcast to:", p.UserID)
 		}
-
-		p.Conn.WriteMessage(websocket.TextMessage, bytes)
 	}
 }
 
@@ -252,7 +261,7 @@ func (r *Room) Broadcast(event string, data interface{}) {
 // ==========================
 func (r *Room) StartCountdown() {
 	r.Mutex.Lock()
-	if r.State != "waiting" || !r.allPlayersHaveCards() {
+	if r.State != "waiting" || !r.enoughPlayers() || !r.allPlayersHaveCards() {
 		r.Mutex.Unlock()
 		return
 	}
@@ -263,16 +272,11 @@ func (r *Room) StartCountdown() {
 	log.Println("⏳ Countdown started")
 
 	for i := 10; i > 0; i-- {
-
 		r.Mutex.Lock()
 
-		// ❌ STOP if someone lost card / left
-		if !r.allPlayersHaveCards() {
+		if !r.enoughPlayers() || !r.allPlayersHaveCards() {
 			r.State = "waiting"
 			r.Mutex.Unlock()
-
-			log.Println("⛔ Countdown cancelled")
-			go BroadcastLobby()
 			return
 		}
 
@@ -280,9 +284,7 @@ func (r *Room) StartCountdown() {
 		r.Mutex.Unlock()
 
 		r.Broadcast("countdown", i)
-		go BroadcastLobby()
-
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Second)
 	}
 
 	r.StartGame()
@@ -296,8 +298,6 @@ func (r *Room) StartGame() {
 	r.Mutex.Unlock()
 
 	r.Broadcast("start", "Game started!")
-	go BroadcastLobby()
-
 	go r.CallNumbers()
 }
 
@@ -332,23 +332,12 @@ func (r *Room) CallNumbers() {
 }
 
 // ==========================
-// UTILS
-// ==========================
-func (r *Room) GetWinAmount() float64 {
-	r.Mutex.Lock()
-	defer r.Mutex.Unlock()
-
-	return float64(len(r.getActivePlayers())) * r.Stake * 0.8
-}
-// ==========================
 // CARD SYSTEM
 // ==========================
 func (r *Room) SendAvailableCards(p *Player) {
-	available := []map[string]int{}
+	var available []map[string]int
 
 	r.Mutex.Lock()
-	defer r.Mutex.Unlock()
-
 	for _, c := range storage.Cards {
 		if !r.UsedCards[c.CardID] {
 			available = append(available, map[string]int{
@@ -356,33 +345,27 @@ func (r *Room) SendAvailableCards(p *Player) {
 			})
 		}
 	}
-    log.Println("📤 Sending available cards to:", p.UserID)
-	log.Println("🃏 Total available:", len(available))
-	if p.Conn != nil {
-		p.Conn.WriteJSON(map[string]interface{}{
-			"type": "cards",
-			"data": available,
-		})
-	}
+	r.Mutex.Unlock()
+
+	log.Println("📤 Cards →", p.UserID, len(available))
+	p.SendJSON("cards", available)
 }
 
 func (r *Room) SendTakenCards(p *Player) {
-	taken := []int{}
+	var taken []int
 
 	r.Mutex.Lock()
-	defer r.Mutex.Unlock()
-
 	for id := range r.UsedCards {
 		taken = append(taken, id)
 	}
+	r.Mutex.Unlock()
 
-	if p.Conn != nil {
-		p.Conn.WriteJSON(map[string]interface{}{
-			"type": "taken_cards",
-			"data": taken,
-		})
-	}
+	p.SendJSON("taken_cards", taken)
 }
+
+// ==========================
+// WRITE PUMP
+// ==========================
 func (p *Player) WritePump() {
 	defer p.Conn.Close()
 
@@ -392,18 +375,5 @@ func (p *Player) WritePump() {
 			log.Println("Write error:", err)
 			return
 		}
-	}
-}
-func (p *Player) ReadPump(onMessage func([]byte)) {
-	defer p.Conn.Close()
-
-	for {
-		_, msg, err := p.Conn.ReadMessage()
-		if err != nil {
-			log.Println("Read error:", err)
-			return
-		}
-
-		onMessage(msg)
 	}
 }
