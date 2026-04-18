@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"time"
 
 	"bingo-backend/config"
@@ -38,5 +39,10 @@ func main() {
 	websocket.HandleLobbyWS(c.Writer, c.Request)
 })
 	log.Println("Server running on :8080")
-	r.Run(":8080")
+	port := os.Getenv("PORT")
+if port == "" {
+	port = "8080"
+}
+
+r.Run(":" + port)
 }
