@@ -2,9 +2,11 @@ package websocket
 
 import (
 	"bingo-backend/game"
+	"bingo-backend/middleware"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -23,11 +25,22 @@ type Client struct {
 type IncomingMessage struct {
 	Type   string  `json:"type"`
 	Stake  float64 `json:"stake"`
-	UserID int     `json:"user_id"`
 	CardID int     `json:"card_id"`
 }
 
+// ==========================
+// ENTRY
+// ==========================
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+
+	userID, err := middleware.ParseToken(token)
+	if err != nil {
+		log.Println("❌ Invalid token")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade error:", err)
@@ -36,21 +49,31 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	client := &Client{
 		Conn: conn,
-		Send: make(chan []byte),
+		Send: make(chan []byte, 256), // buffered 🔥
 	}
 
-	go client.read()
+	go client.read(int(userID))
 	go client.write()
 }
 
 // ==========================
 // READ LOOP
 // ==========================
-func (c *Client) read() {
-	defer c.Conn.Close()
+func (c *Client) read(userID int) {
+	defer func() {
+		close(c.Send)
+		c.Conn.Close()
+	}()
 
 	var currentRoom *game.Room
-	var userID int
+
+	// 🔥 heartbeat setup
+	c.Conn.SetReadLimit(512)
+	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.Conn.SetPongHandler(func(string) error {
+		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
 
 	for {
 		_, message, err := c.Conn.ReadMessage()
@@ -58,7 +81,7 @@ func (c *Client) read() {
 			log.Println("Read error:", err)
 
 			if currentRoom != nil {
-				currentRoom.MarkDisconnected(userID) // ✅ FIX (not RemovePlayer)
+				currentRoom.MarkDisconnected(userID)
 			}
 
 			break
@@ -66,7 +89,6 @@ func (c *Client) read() {
 
 		var msg IncomingMessage
 		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Println("Invalid message:", err)
 			continue
 		}
 
@@ -76,10 +98,7 @@ func (c *Client) read() {
 		// JOIN ROOM
 		// ==========================
 		case "join":
-			userID = msg.UserID
-
 			if msg.Stake <= 0 {
-				log.Println("❌ Invalid stake:", msg.Stake)
 				continue
 			}
 
@@ -87,13 +106,14 @@ func (c *Client) read() {
 			currentRoom = room
 
 			player := &game.Player{
-				UserID: msg.UserID,
-				Conn:   c.Conn,
+				UserID: userID,
+				Send:   c.Send,   // ✅ USE CHANNEL
+				Conn:   c.Conn,   // optional (for closing)
 			}
 
 			room.AddPlayer(player)
 
-			log.Println("✅ User joined stake:", msg.Stake)
+			log.Printf("✅ User %d joined stake %.0f\n", userID, msg.Stake)
 
 		// ==========================
 		// SELECT CARD
@@ -103,25 +123,44 @@ func (c *Client) read() {
 				continue
 			}
 
-			currentRoom.HandleSelectCard(msg.UserID, msg.CardID)
+			currentRoom.HandleSelectCard(userID, msg.CardID)
 
 		default:
-			log.Println("⚠️ Unknown message type:", msg.Type)
+			log.Println("⚠️ Unknown message:", msg.Type)
 		}
 	}
 }
 
 // ==========================
-// WRITE LOOP (OPTIONAL)
+// WRITE LOOP
 // ==========================
 func (c *Client) write() {
-	defer c.Conn.Close()
+	ticker := time.NewTicker(30 * time.Second) // 🔥 ping
+	defer func() {
+		ticker.Stop()
+		c.Conn.Close()
+	}()
 
-	for msg := range c.Send {
-		err := c.Conn.WriteMessage(websocket.TextMessage, msg)
-		if err != nil {
-			log.Println("Write error:", err)
-			break
+	for {
+		select {
+
+		case msg, ok := <-c.Send:
+			if !ok {
+				return
+			}
+
+			err := c.Conn.WriteMessage(websocket.TextMessage, msg)
+			if err != nil {
+				log.Println("Write error:", err)
+				return
+			}
+
+		case <-ticker.C:
+			// 🔥 keep connection alive
+			err := c.Conn.WriteMessage(websocket.PingMessage, nil)
+			if err != nil {
+				return
+			}
 		}
 	}
 }

@@ -16,6 +16,8 @@ type Player struct {
 	UserID int
 	Conn   *websocket.Conn
 	Card   *models.BingoCard
+	Send   chan []byte // ✅ NEW
+
 
 	Connected bool
 	LastSeen  time.Time
@@ -378,5 +380,29 @@ func (r *Room) SendTakenCards(p *Player) {
 			"type": "taken_cards",
 			"data": taken,
 		})
+	}
+}
+func (p *Player) WritePump() {
+	defer p.Conn.Close()
+
+	for msg := range p.Send {
+		err := p.Conn.WriteMessage(websocket.TextMessage, msg)
+		if err != nil {
+			log.Println("Write error:", err)
+			return
+		}
+	}
+}
+func (p *Player) ReadPump(onMessage func([]byte)) {
+	defer p.Conn.Close()
+
+	for {
+		_, msg, err := p.Conn.ReadMessage()
+		if err != nil {
+			log.Println("Read error:", err)
+			return
+		}
+
+		onMessage(msg)
 	}
 }
