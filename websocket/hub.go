@@ -35,11 +35,11 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 
 	userID, err := utils.ValidateToken(token)
-if err != nil {
-	log.Println("❌ Invalid token:", err)
-	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-	return
-}
+	if err != nil {
+		log.Println("❌ Invalid token:", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -47,44 +47,50 @@ if err != nil {
 		return
 	}
 
-	client := &Client{
-		Conn: conn,
-		Send: make(chan []byte, 256), // buffered 🔥
+	sendChan := make(chan []byte, 256)
+
+	// 🔥 CREATE PLAYER (IMPORTANT)
+	player := &game.Player{
+		UserID: int(userID),
+		Conn:   conn,
+		Send:   sendChan,
 	}
 
-	go client.read(int(userID))
-	go client.write()
+	// 🔥 START WRITE PUMP (ONLY WRITER)
+	go player.WritePump()
+
+	// 🔥 START READ LOOP
+	go readLoop(conn, player)
 }
 
 // ==========================
 // READ LOOP
 // ==========================
-func (c *Client) read(userID int) {
+func readLoop(conn *websocket.Conn, player *game.Player) {
 	defer func() {
-		close(c.Send)
-		c.Conn.Close()
+		close(player.Send)
+		conn.Close()
 	}()
 
 	var currentRoom *game.Room
 
-	// 🔥 heartbeat setup
-	c.Conn.SetReadLimit(512)
-	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.Conn.SetPongHandler(func(string) error {
-		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	// 🔥 heartbeat
+	conn.SetReadLimit(512)
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
 	for {
-		_, message, err := c.Conn.ReadMessage()
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("Read error:", err)
 
 			if currentRoom != nil {
-				currentRoom.MarkDisconnected(userID)
+				currentRoom.MarkDisconnected(player.UserID)
 			}
-
-			break
+			return
 		}
 
 		var msg IncomingMessage
@@ -105,15 +111,9 @@ func (c *Client) read(userID int) {
 			room := game.Manager.GetRoom(msg.Stake)
 			currentRoom = room
 
-			player := &game.Player{
-				UserID: userID,
-				Send:   c.Send,   // ✅ USE CHANNEL
-				Conn:   c.Conn,   // optional (for closing)
-			}
-
 			room.AddPlayer(player)
 
-			log.Printf("✅ User %d joined stake %.0f\n", userID, msg.Stake)
+			log.Printf("✅ User %d joined stake %.0f\n", player.UserID, msg.Stake)
 
 		// ==========================
 		// SELECT CARD
@@ -123,44 +123,10 @@ func (c *Client) read(userID int) {
 				continue
 			}
 
-			currentRoom.HandleSelectCard(userID, msg.CardID)
+			currentRoom.HandleSelectCard(player.UserID, msg.CardID)
 
 		default:
 			log.Println("⚠️ Unknown message:", msg.Type)
-		}
-	}
-}
-
-// ==========================
-// WRITE LOOP
-// ==========================
-func (c *Client) write() {
-	ticker := time.NewTicker(30 * time.Second) // 🔥 ping
-	defer func() {
-		ticker.Stop()
-		c.Conn.Close()
-	}()
-
-	for {
-		select {
-
-		case msg, ok := <-c.Send:
-			if !ok {
-				return
-			}
-
-			err := c.Conn.WriteMessage(websocket.TextMessage, msg)
-			if err != nil {
-				log.Println("Write error:", err)
-				return
-			}
-
-		case <-ticker.C:
-			// 🔥 keep connection alive
-			err := c.Conn.WriteMessage(websocket.PingMessage, nil)
-			if err != nil {
-				return
-			}
 		}
 	}
 }
