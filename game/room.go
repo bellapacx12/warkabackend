@@ -35,7 +35,7 @@ type Room struct {
 	Called  []int
 }
 
-const MinPlayers = 2
+const MinPlayers = 1
 
 // ==========================
 // PLAYER SEND HELPER
