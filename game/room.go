@@ -38,9 +38,19 @@ type Room struct {
 const MinPlayers = 1
 
 // ==========================
-// PLAYER SEND HELPER
+// SAFE SEND
 // ==========================
 func (p *Player) SendJSON(event string, data interface{}) {
+	if !p.Connected {
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("🔥 Recovered send panic for:", p.UserID)
+		}
+	}()
+
 	msg := map[string]interface{}{
 		"type": event,
 		"data": data,
@@ -104,6 +114,7 @@ func (r *Room) AddPlayer(p *Player) {
 
 	if existing, ok := r.Players[p.UserID]; ok {
 		existing.Conn = p.Conn
+		existing.Send = p.Send // 🔥 IMPORTANT FIX
 		existing.Connected = true
 		existing.LastSeen = time.Now()
 
@@ -149,14 +160,15 @@ func (r *Room) AddPlayer(p *Player) {
 // ==========================
 func (r *Room) HandleSelectCard(userID int, cardID int) {
 	r.Mutex.Lock()
-	defer r.Mutex.Unlock()
 
 	if r.UsedCards[cardID] {
+		r.Mutex.Unlock()
 		return
 	}
 
 	player, ok := r.Players[userID]
 	if !ok {
+		r.Mutex.Unlock()
 		return
 	}
 
@@ -170,14 +182,17 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 	}
 
 	if selected == nil {
+		r.Mutex.Unlock()
 		return
 	}
 
 	player.Card = selected
 	r.UsedCards[cardID] = true
 
+	r.Mutex.Unlock()
+
 	player.SendJSON("card_selected", selected)
-	go r.Broadcast("card_taken", cardID)
+	r.Broadcast("card_taken", cardID)
 
 	log.Printf("✅ Player %d took card %d\n", userID, cardID)
 
@@ -228,16 +243,9 @@ func (r *Room) CleanupDisconnected() {
 }
 
 // ==========================
-// BROADCAST (SAFE)
+// BROADCAST
 // ==========================
 func (r *Room) Broadcast(event string, data interface{}) {
-	msg := map[string]interface{}{
-		"type": event,
-		"data": data,
-	}
-
-	bytes, _ := json.Marshal(msg)
-
 	r.Mutex.Lock()
 	var players []*Player
 	for _, p := range r.Players {
@@ -248,11 +256,7 @@ func (r *Room) Broadcast(event string, data interface{}) {
 	r.Mutex.Unlock()
 
 	for _, p := range players {
-		select {
-		case p.Send <- bytes:
-		default:
-			log.Println("⚠️ Dropping broadcast to:", p.UserID)
-		}
+		p.SendJSON(event, data)
 	}
 }
 
