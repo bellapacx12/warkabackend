@@ -20,16 +20,30 @@ type TelegramAuthRequest struct {
 func RegisterTelegramUser(c *gin.Context) {
 	var body TelegramAuthRequest
 
+	// 🔍 Bind request
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"error": "invalid"})
+		log.Println("BIND ERROR:", err)
+		c.JSON(400, gin.H{"error": "invalid request body"})
 		return
 	}
 
+	// 🔍 Validate input
+	if body.TelegramID == 0 {
+		c.JSON(400, gin.H{"error": "telegram_id required"})
+		return
+	}
+
+	log.Println("➡️ Incoming TelegramID:", body.TelegramID)
+
+	// 🔍 Try to get existing user
 	user, err := storage.GetUserByTelegramID(body.TelegramID)
 
-	// ✅ ONLY create if user truly does not exist
 	if err != nil {
+
+		// ✅ User not found → create
 		if errors.Is(err, sql.ErrNoRows) {
+
+			log.Println("👤 User not found, creating...")
 
 			newUser := &models.User{
 				TelegramID: body.TelegramID,
@@ -40,29 +54,41 @@ func RegisterTelegramUser(c *gin.Context) {
 
 			user, err = storage.CreateUser(newUser)
 			if err != nil {
-				log.Println("CREATE USER ERROR:", err)
+				log.Println("❌ CREATE USER ERROR:", err)
 
-c.JSON(500, gin.H{
-	"error": err.Error(), // 🔥 show real error
-})
+				c.JSON(500, gin.H{
+					"error": err.Error(),
+				})
 				return
 			}
 
+			log.Println("✅ User created with ID:", user.ID)
+
 		} else {
-			// ❌ real DB error
-			c.JSON(500, gin.H{"error": "database error"})
+			// ❌ REAL DB ERROR (this is what you were hiding)
+			log.Println("❌ GET USER ERROR:", err)
+
+			c.JSON(500, gin.H{
+				"error": err.Error(),
+			})
 			return
 		}
 	}
 
+	// 🔐 Generate token
 	token, err := utils.GenerateToken(user.ID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "token error"})
+		log.Println("❌ TOKEN ERROR:", err)
+
+		c.JSON(500, gin.H{
+			"error": err.Error(),
+		})
 		return
 	}
+
+	log.Println("✅ Auth success for user:", user.ID)
 
 	c.JSON(200, gin.H{
 		"token": token,
 	})
 }
-
