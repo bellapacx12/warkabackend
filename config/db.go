@@ -14,10 +14,16 @@ func ConnectDB() {
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("❌ DB open error:", err)
+	}
+
+	// 🔥 IMPORTANT: verify connection
+	err = db.Ping()
+	if err != nil {
+		log.Fatal("❌ DB ping failed:", err)
 	}
 
 	DB = db
 
-	log.Println("✅ DB connected")
+	log.Println("✅ DB connected successfully")
 }
