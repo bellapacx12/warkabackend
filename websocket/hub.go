@@ -2,7 +2,7 @@ package websocket
 
 import (
 	"bingo-backend/game"
-	"bingo-backend/middleware"
+	"bingo-backend/utils"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -34,12 +34,12 @@ type IncomingMessage struct {
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 
-	userID, err := middleware.ParseToken(token)
-	if err != nil {
-		log.Println("❌ Invalid token")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID, err := utils.ValidateToken(token)
+if err != nil {
+	log.Println("❌ Invalid token:", err)
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	return
+}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
