@@ -4,6 +4,9 @@ import (
 	"bingo-backend/models"
 	"bingo-backend/storage"
 	"bingo-backend/utils"
+	"database/sql"
+	"errors"
+	"log"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,18 +27,30 @@ func RegisterTelegramUser(c *gin.Context) {
 
 	user, err := storage.GetUserByTelegramID(body.TelegramID)
 
-	// 🟡 If not found → create
+	// ✅ ONLY create if user truly does not exist
 	if err != nil {
-		newUser := &models.User{
-			TelegramID: body.TelegramID,
-			Name:       body.Name,
-			Phone:      body.Phone,
-			Balance:    0,
-		}
+		if errors.Is(err, sql.ErrNoRows) {
 
-		user, err = storage.CreateUser(newUser)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "failed to create user"})
+			newUser := &models.User{
+				TelegramID: body.TelegramID,
+				Name:       body.Name,
+				Phone:      body.Phone,
+				Balance:    0,
+			}
+
+			user, err = storage.CreateUser(newUser)
+			if err != nil {
+				log.Println("CREATE USER ERROR:", err)
+
+c.JSON(500, gin.H{
+	"error": err.Error(), // 🔥 show real error
+})
+				return
+			}
+
+		} else {
+			// ❌ real DB error
+			c.JSON(500, gin.H{"error": "database error"})
 			return
 		}
 	}
