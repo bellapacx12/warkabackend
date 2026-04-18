@@ -356,7 +356,8 @@ func (r *Room) SendAvailableCards(p *Player) {
 			})
 		}
 	}
-
+    log.Println("📤 Sending available cards to:", p.UserID)
+	log.Println("🃏 Total available:", len(available))
 	if p.Conn != nil {
 		p.Conn.WriteJSON(map[string]interface{}{
 			"type": "cards",
