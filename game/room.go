@@ -356,7 +356,7 @@ func (r *Room) SendAvailableCards(p *Player) {
 }
 
 func (r *Room) SendTakenCards(p *Player) {
-	var taken []int
+	taken := []int{} // ✅ force empty array, not nil
 
 	r.Mutex.Lock()
 	for id := range r.UsedCards {
