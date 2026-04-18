@@ -37,7 +37,7 @@ func main() {
 	})
 
 	r.POST("/auth/telegram", handlers.RegisterTelegramUser)
-
+    r.GET("/auth/telegram", handlers.GetTelegramUser)
 	// 🔐 Protected routes
 	auth := r.Group("/")
 	auth.Use(middleware.AuthMiddleware())
@@ -46,7 +46,7 @@ func main() {
 
 	auth.GET("/me", func(c *gin.Context) {
 	userID := c.GetInt64("user_id")
-
+   
 	user, err := storage.GetUserByID(userID)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "user not found"})

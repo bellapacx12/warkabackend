@@ -6,6 +6,7 @@ import (
 	"bingo-backend/utils"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -87,6 +88,32 @@ func RegisterTelegramUser(c *gin.Context) {
 	}
 
 	log.Println("✅ Auth success for user:", user.ID)
+
+	c.JSON(200, gin.H{
+		"token": token,
+	})
+}
+func GetTelegramUser(c *gin.Context) {
+	tgIDStr := c.Query("telegram_id")
+
+	var tgID int64
+	_, err := fmt.Sscan(tgIDStr, &tgID)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid telegram_id"})
+		return
+	}
+
+	user, err := storage.GetUserByTelegramID(tgID)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "not found"})
+		return
+	}
+
+	token, err := utils.GenerateToken(user.ID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "token error"})
+		return
+	}
 
 	c.JSON(200, gin.H{
 		"token": token,
