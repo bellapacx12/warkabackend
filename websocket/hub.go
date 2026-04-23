@@ -76,21 +76,39 @@ if err != nil {
 room := game.Manager.FindPlayerRoom(player.UserID)
 
 if room != nil {
-	log.Printf("♻️ Reconnecting user %d to room\n", player.UserID)
+	room.Mutex.Lock()
 
-	room.ReconnectPlayer(player)
+	_, stillExists := room.Players[player.UserID]
+	state := room.State
+	stake := room.Stake
 
-	// ✅ send game state
-	player.SendJSON("init", map[string]interface{}{
-		"called":    room.Called,
-		"countdown": room.Countdown,
-	})
+	room.Mutex.Unlock()
 
-	// ✅ send card separately (IMPORTANT)
-	if card := room.GetPlayerCard(player.UserID); card != nil {
-		player.SendJSON("card", map[string]interface{}{
-			"grid": card,
+	// ✅ ONLY if real active game
+	if stillExists && state != "finished" {
+		log.Printf("♻️ Active game for user %d\n", player.UserID)
+
+		// 🔥 tell frontend to show REJOIN
+		player.SendJSON("active_game", map[string]interface{}{
+			"stake": stake,
+			"state": state,
 		})
+
+		// 🔥 reconnect player
+		room.ReconnectPlayer(player)
+
+		// 🔥 restore game state
+		player.SendJSON("init", map[string]interface{}{
+			"called":    room.Called,
+			"countdown": room.Countdown,
+		})
+
+		// 🔥 restore card
+		if card := room.GetPlayerCard(player.UserID); card != nil {
+			player.SendJSON("card", map[string]interface{}{
+				"grid": card,
+			})
+		}
 	}
 }
 	// 🔥 START READ LOOP
