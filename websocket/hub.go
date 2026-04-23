@@ -62,7 +62,7 @@ if err != nil {
 		Conn:   conn,
 		Send:   sendChan,
 	}
-
+    player.SendJSON("balance", user.Balance)
 	// 🔥 START WRITE PUMP (ONLY WRITER)
 	go player.WritePump()
     
@@ -160,7 +160,7 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 			currentRoom = room
 
 			room.AddPlayer(player)
-
+            
 			log.Printf("✅ User %d joined stake %.0f\n", player.UserID, msg.Stake)
 
 		// ==========================
