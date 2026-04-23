@@ -191,7 +191,7 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 
 	currentRoom.Broadcast("winner", map[string]interface{}{
 		"user_id":  player.UserID,
-		"username": player.Username,
+		"name": player.Username,
 		"card":     card,
 		"stake":    currentRoom.Stake,
 	})
