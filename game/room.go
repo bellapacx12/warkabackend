@@ -179,6 +179,33 @@ func (r *Room) AddPlayer(p *Player) {
 // ==========================
 // CARD SELECTION
 // ==========================
+func convertToGrid(card *models.BingoCard) [][]any {
+	grid := make([][]any, 5)
+
+	for i := 0; i < 5; i++ {
+		grid[i] = make([]any, 5)
+	}
+
+	for i := 0; i < 5; i++ {
+		grid[i][0] = valueOrNil(card.B[i])
+		grid[i][1] = valueOrNil(card.I[i])
+		grid[i][2] = valueOrNil(card.N[i])
+		grid[i][3] = valueOrNil(card.G[i])
+		grid[i][4] = valueOrNil(card.O[i])
+	}
+
+	// ✅ FREE SPACE
+	grid[2][2] = "FREE"
+
+	return grid
+}
+
+func valueOrNil(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
 func (r *Room) HandleSelectCard(userID int, cardID int) {
 	r.Mutex.Lock()
 
@@ -212,13 +239,27 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 		return
 	}
 
+	// ✅ SAVE CARD
 	player.Card = selected
 	r.UsedCards[cardID] = true
 
+	// ✅ CONVERT TO GRID
+	grid := convertToGrid(selected)
+
+	// ✅ STORE GRID FOR RECONNECT
+	r.Cards[userID] = grid
+
 	r.Mutex.Unlock()
 
-	player.SendJSON("card_selected", selected)
-	player.SendJSON("card", selected)
+	// ✅ SEND CORRECT FORMAT
+	player.SendJSON("card_selected", map[string]interface{}{
+		"card_id": cardID,
+	})
+
+	player.SendJSON("card", map[string]interface{}{
+		"grid": grid,
+	})
+
 	r.Broadcast("card_taken", cardID)
 
 	log.Printf("✅ Player %d took card %d\n", userID, cardID)
