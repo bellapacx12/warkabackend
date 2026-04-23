@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"time"
+	"errors"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -11,7 +11,6 @@ var secret = []byte("super-secret") // move to env later
 func GenerateToken(userID int64) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -20,6 +19,10 @@ func GenerateToken(userID int64) (string, error) {
 
 func ValidateToken(tokenStr string) (int64, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		// Extra safety: check signing method
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("invalid signing method")
+		}
 		return secret, nil
 	})
 
@@ -27,6 +30,15 @@ func ValidateToken(tokenStr string) (int64, error) {
 		return 0, err
 	}
 
-	claims := token.Claims.(jwt.MapClaims)
-	return int64(claims["user_id"].(float64)), nil
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, errors.New("invalid claims")
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		return 0, errors.New("invalid user_id")
+	}
+
+	return int64(userID), nil
 }
