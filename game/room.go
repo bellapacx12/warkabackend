@@ -17,7 +17,7 @@ type Player struct {
 	Conn   *websocket.Conn
 	Card   *models.BingoCard
 	Send   chan []byte
-
+    Username string // ✅ required
 	Connected bool
 	LastSeen  time.Time
 }
@@ -480,4 +480,28 @@ func (r *Room) GetPlayerCard(userID int) [][]any {
 	}
 
 	return card
+}
+func (r *Room) ResetRound() {
+	r.Mutex.Lock()
+	defer r.Mutex.Unlock()
+
+	log.Println("🔄 Resetting round...")
+
+	// reset game state
+	r.State = "waiting"
+	r.Countdown = 0
+	r.Numbers = nil
+	r.Called = []int{}
+
+	// clear cards
+	r.UsedCards = make(map[int]bool)
+	r.Cards = make(map[int][][]any)
+
+	// clear player cards
+	for _, p := range r.Players {
+		p.Card = nil
+	}
+
+	// notify players
+	go r.Broadcast("round_reset", "new round started")
 }

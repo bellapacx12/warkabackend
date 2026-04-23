@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"bingo-backend/game"
+	"bingo-backend/storage"
 	"bingo-backend/utils"
 	"log"
 	"net/http"
@@ -39,7 +40,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
+    // ✅ FETCH USER FROM DB
+user, err := storage.GetUserByID(int64(userID))
+if err != nil {
+	log.Println("❌ Failed to load user:", err)
+	http.Error(w, "User not found", http.StatusUnauthorized)
+	return
+}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade error:", err)
@@ -51,6 +58,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// 🔥 CREATE PLAYER (IMPORTANT)
 	player := &game.Player{
 		UserID: int(userID),
+		Username: user.Name, // ✅ THIS is your DB name
 		Conn:   conn,
 		Send:   sendChan,
 	}
@@ -168,24 +176,34 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		// ==========================
 		// 🔥 BINGO (NEW)
 		// ==========================
-		case "bingo":
-			if currentRoom == nil {
-				continue
-			}
+	     case "bingo":
+	if currentRoom == nil {
+		continue
+	}
 
-			// basic protection
-			if currentRoom.State != "playing" {
-				continue
-			}
+	if currentRoom.State != "playing" {
+		continue
+	}
 
-			log.Println("🎉 BINGO from:", player.UserID)
+	log.Println("🎉 BINGO from:", player.UserID)
 
-			// ⚠️ TODO: validate properly later
-			currentRoom.Broadcast("winner", player.UserID)
+	card := currentRoom.GetPlayerCard(player.UserID)
 
-			currentRoom.Mutex.Lock()
-			currentRoom.State = "finished"
-			currentRoom.Mutex.Unlock()
+	currentRoom.Broadcast("winner", map[string]interface{}{
+		"user_id":  player.UserID,
+		"username": player.Username,
+		"card":     card,
+		"stake":    currentRoom.Stake,
+	})
+
+	currentRoom.Mutex.Lock()
+	currentRoom.State = "finished"
+	currentRoom.Mutex.Unlock()
+
+	go func(r *game.Room) {
+		time.Sleep(5 * time.Second)
+		r.ResetRound()
+	}(currentRoom)
 
 		default:
 			log.Println("⚠️ Unknown message:", msg.Type)
