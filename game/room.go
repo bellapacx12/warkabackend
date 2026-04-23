@@ -81,6 +81,26 @@ func NewRoom(stake float64) *Room {
 }
 
 // ==========================
+// GAME STATE SYNC
+// ==========================
+func (r *Room) SendGameState(p *Player) {
+	r.Mutex.Lock()
+	defer r.Mutex.Unlock()
+
+	state := map[string]interface{}{
+		"state":     r.State,
+		"countdown": r.Countdown,
+		"called":    r.Called,
+	}
+
+	p.SendJSON("init", state)
+
+	if p.Card != nil {
+		p.SendJSON("card", p.Card)
+	}
+}
+
+// ==========================
 // HELPERS
 // ==========================
 func (r *Room) getActivePlayers() []*Player {
@@ -114,7 +134,7 @@ func (r *Room) AddPlayer(p *Player) {
 
 	if existing, ok := r.Players[p.UserID]; ok {
 		existing.Conn = p.Conn
-		existing.Send = p.Send // 🔥 IMPORTANT FIX
+		existing.Send = p.Send
 		existing.Connected = true
 		existing.LastSeen = time.Now()
 
@@ -124,10 +144,7 @@ func (r *Room) AddPlayer(p *Player) {
 
 		r.SendAvailableCards(existing)
 		r.SendTakenCards(existing)
-
-		if existing.Card != nil {
-			existing.SendJSON("card_selected", existing.Card)
-		}
+		r.SendGameState(existing)
 
 		go BroadcastLobby()
 		return
@@ -145,8 +162,10 @@ func (r *Room) AddPlayer(p *Player) {
 	log.Printf("Player %d joined room %.0f\n", p.UserID, r.Stake)
 
 	r.Broadcast("players", count)
+
 	r.SendAvailableCards(p)
 	r.SendTakenCards(p)
+	r.SendGameState(p)
 
 	go BroadcastLobby()
 
@@ -172,6 +191,11 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 		return
 	}
 
+	if player.Card != nil && player.Card.CardID == cardID {
+		r.Mutex.Unlock()
+		return
+	}
+
 	var selected *models.BingoCard
 	for _, c := range storage.Cards {
 		if c.CardID == cardID {
@@ -192,6 +216,7 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 	r.Mutex.Unlock()
 
 	player.SendJSON("card_selected", selected)
+	player.SendJSON("card", selected)
 	r.Broadcast("card_taken", cardID)
 
 	log.Printf("✅ Player %d took card %d\n", userID, cardID)
@@ -273,8 +298,6 @@ func (r *Room) StartCountdown() {
 	r.State = "countdown"
 	r.Mutex.Unlock()
 
-	log.Println("⏳ Countdown started")
-
 	for i := 10; i > 0; i-- {
 		r.Mutex.Lock()
 
@@ -351,12 +374,11 @@ func (r *Room) SendAvailableCards(p *Player) {
 	}
 	r.Mutex.Unlock()
 
-	log.Println("📤 Cards →", p.UserID, len(available))
 	p.SendJSON("cards", available)
 }
 
 func (r *Room) SendTakenCards(p *Player) {
-	taken := []int{} // ✅ force empty array, not nil
+	taken := []int{}
 
 	r.Mutex.Lock()
 	for id := range r.UsedCards {
