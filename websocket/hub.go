@@ -3,7 +3,6 @@ package websocket
 import (
 	"bingo-backend/game"
 	"bingo-backend/utils"
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -68,13 +67,19 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 // ==========================
 func readLoop(conn *websocket.Conn, player *game.Player) {
 	defer func() {
+		log.Println("❌ Disconnected:", player.UserID)
+
+		if player != nil {
+			player.Connected = false
+		}
+
 		close(player.Send)
 		conn.Close()
 	}()
 
 	var currentRoom *game.Room
 
-	// 🔥 heartbeat
+	// 🔥 heartbeat setup
 	conn.SetReadLimit(512)
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
@@ -82,20 +87,28 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		return nil
 	})
 
+	// 🔥 ping sender (VERY IMPORTANT)
+	go func() {
+		ticker := time.NewTicker(25 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
+		var msg IncomingMessage
+
+		if err := conn.ReadJSON(&msg); err != nil {
 			log.Println("Read error:", err)
 
 			if currentRoom != nil {
 				currentRoom.MarkDisconnected(player.UserID)
 			}
 			return
-		}
-
-		var msg IncomingMessage
-		if err := json.Unmarshal(message, &msg); err != nil {
-			continue
 		}
 
 		switch msg.Type {
@@ -124,6 +137,28 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 			}
 
 			currentRoom.HandleSelectCard(player.UserID, msg.CardID)
+
+		// ==========================
+		// 🔥 BINGO (NEW)
+		// ==========================
+		case "bingo":
+			if currentRoom == nil {
+				continue
+			}
+
+			// basic protection
+			if currentRoom.State != "playing" {
+				continue
+			}
+
+			log.Println("🎉 BINGO from:", player.UserID)
+
+			// ⚠️ TODO: validate properly later
+			currentRoom.Broadcast("winner", player.UserID)
+
+			currentRoom.Mutex.Lock()
+			currentRoom.State = "finished"
+			currentRoom.Mutex.Unlock()
 
 		default:
 			log.Println("⚠️ Unknown message:", msg.Type)
