@@ -27,6 +27,7 @@ type Room struct {
 	Players   map[int]*Player
 	UsedCards map[int]bool
 	Mutex     sync.Mutex
+	Cards map[int][][]any // 🔥 ADD THIS
 
 	State     string
 	Countdown int
@@ -72,6 +73,7 @@ func NewRoom(stake float64) *Room {
 	room := &Room{
 		Stake:     stake,
 		Players:   make(map[int]*Player),
+		Cards:     make(map[int][][]any), // 🔥 IMPORTANT
 		UsedCards: make(map[int]bool),
 		State:     "waiting",
 	}
@@ -402,4 +404,39 @@ func (p *Player) WritePump() {
 			return
 		}
 	}
+}
+// ==========================
+// RECONNECT PLAYER
+// ==========================
+func (r *Room) ReconnectPlayer(player *Player) {
+	r.Mutex.Lock()
+	defer r.Mutex.Unlock()
+
+	oldPlayer, exists := r.Players[player.UserID]
+
+	if exists {
+		log.Printf("♻️ Replacing connection for user %d\n", player.UserID)
+
+		// ❌ close old connection safely
+		if oldPlayer.Conn != nil {
+			oldPlayer.Conn.Close()
+		}
+	}
+
+	// ✅ replace with new connection
+	r.Players[player.UserID] = player
+}
+// ==========================
+// GET PLAYER CARD
+// ==========================
+func (r *Room) GetPlayerCard(userID int) [][]any {
+	r.Mutex.Lock()
+	defer r.Mutex.Unlock()
+
+	card, ok := r.Cards[userID]
+	if !ok {
+		return nil
+	}
+
+	return card
 }

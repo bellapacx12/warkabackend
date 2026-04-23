@@ -126,3 +126,22 @@ func BroadcastLobby() {
 
 	log.Println("📡 Lobby broadcast:", len(rooms), "rooms →", len(LobbyClients), "clients")
 }
+// ==========================
+// FIND PLAYER ROOM
+// ==========================
+func (m *RoomManager) FindPlayerRoom(userID int) *Room {
+	m.Mutex.Lock()
+	defer m.Mutex.Unlock()
+
+	for _, room := range m.Rooms {
+		room.Mutex.Lock()
+		_, exists := room.Players[userID]
+		room.Mutex.Unlock()
+
+		if exists {
+			return room
+		}
+	}
+
+	return nil
+}

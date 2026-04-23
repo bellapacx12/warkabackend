@@ -57,7 +57,34 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// 🔥 START WRITE PUMP (ONLY WRITER)
 	go player.WritePump()
+    
 
+// ==========================
+// 🔥 RESTORE SESSION (ADD THIS HERE)
+// ==========================
+// ==========================
+// 🔥 RESTORE SESSION
+// ==========================
+room := game.Manager.FindPlayerRoom(player.UserID)
+
+if room != nil {
+	log.Printf("♻️ Reconnecting user %d to room\n", player.UserID)
+
+	room.ReconnectPlayer(player)
+
+	// ✅ send game state
+	player.SendJSON("init", map[string]interface{}{
+		"called":    room.Called,
+		"countdown": room.Countdown,
+	})
+
+	// ✅ send card separately (IMPORTANT)
+	if card := room.GetPlayerCard(player.UserID); card != nil {
+		player.SendJSON("card", map[string]interface{}{
+			"grid": card,
+		})
+	}
+}
 	// 🔥 START READ LOOP
 	go readLoop(conn, player)
 }
