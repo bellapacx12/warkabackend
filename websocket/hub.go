@@ -110,6 +110,11 @@ if room != nil {
 			}
          // restore card
 			if card := room.GetPlayerCard(player.UserID); card != nil {
+				log.Printf("🃏 Sending card to user %d | stake %.0f | card=%v\n",
+		player.UserID,
+		room.Stake,
+		card,
+	)
 				player.SendJSON("card", map[string]interface{}{
 					"grid": card,
 				})
