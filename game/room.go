@@ -500,7 +500,7 @@ func (r *Room) ResetRound() {
 	// clear cards
 	r.UsedCards = make(map[int]bool)
 	r.Cards = make(map[int][][]any)
-
+    r.UserCard = make(map[int]*models.BingoCard)
 	// clear player cards
 	for _, p := range r.Players {
 		p.Card = nil
