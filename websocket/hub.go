@@ -109,13 +109,7 @@ if room != nil {
 			for _, n := range called {
 				player.SendJSON("number", n)
 			}
-         // restore card
-			if card := room.GetPlayerCard(player.UserID); card != nil {
-				log.Println(card)
-				player.SendJSON("card", map[string]interface{}{
-					"grid": card,
-				})
-			}
+     
 
 	}
 }
