@@ -245,7 +245,7 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 
 	// ✅ CONVERT TO GRID
 	grid := convertToGrid(selected)
-
+    log.Println(grid)
 	// ✅ STORE GRID FOR RECONNECT
 	r.Cards[userID] = grid
 
