@@ -28,7 +28,7 @@ type Room struct {
 	UsedCards map[int]bool
 	Mutex     sync.Mutex
 	Cards map[int][][]any // 🔥 ADD THIS
-
+    UserCard map[int] *models.BingoCard
 	State     string
 	Countdown int
 
@@ -73,7 +73,8 @@ func NewRoom(stake float64) *Room {
 	room := &Room{
 		Stake:     stake,
 		Players:   make(map[int]*Player),
-		Cards:     make(map[int][][]any), // 🔥 IMPORTANT
+		Cards:     make(map[int][][]any),
+		UserCard:     make(map[int]*models.BingoCard),  // 🔥 IMPORTANT
 		UsedCards: make(map[int]bool),
 		State:     "waiting",
 	}
@@ -238,11 +239,14 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 		r.Mutex.Unlock()
 		return
 	}
+	
 
 	// ✅ SAVE CARD
 	player.Card = selected
-	r.UsedCards[cardID] = true
+	r.UserCard[userID] = selected
 
+	r.UsedCards[cardID] = true
+    
 	// ✅ CONVERT TO GRID
 	grid := convertToGrid(selected)
 
@@ -470,11 +474,11 @@ func (r *Room) ReconnectPlayer(player *Player) {
 // ==========================
 // GET PLAYER CARD
 // ==========================
-func (r *Room) GetPlayerCard(userID int) [][]any {
+func (r *Room) GetPlayerCard(userID int) *models.BingoCard {
 	r.Mutex.Lock()
 	defer r.Mutex.Unlock()
 
-	card, ok := r.Cards[userID]
+	card, ok := r.UserCard[userID]
 	if !ok {
 		return nil
 	}
