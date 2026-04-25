@@ -218,6 +218,10 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 	currentRoom.State = "finished"
 	currentRoom.Mutex.Unlock()
 
+
+// ✅ 🔥 NOTIFY FRONTEND (THIS IS WHAT YOU MISSED)
+currentRoom.Broadcast("game_finished", nil)
+
 	go func(r *game.Room) {
 		time.Sleep(5 * time.Second)
 		r.ResetRound()
