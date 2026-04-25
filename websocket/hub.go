@@ -110,11 +110,11 @@ if room != nil {
 				player.SendJSON("number", n)
 			}
          // restore card
-			card := room.GetPlayerCard(player.UserID)
+		card := room.GetPlayerCard(player.UserID) 
 
 if card != nil {
     grid := convertToGrid(card)
-
+    log.Println(grid)
     player.SendJSON("card", map[string]interface{}{
         "grid": grid,
     })
