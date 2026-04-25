@@ -81,34 +81,40 @@ if room != nil {
 	_, stillExists := room.Players[player.UserID]
 	state := room.State
 	stake := room.Stake
+    
+	// copy state safely
+		called := append([]int{}, room.Called...)
+		countdown := room.Countdown
 
 	room.Mutex.Unlock()
 
 	// ✅ ONLY if real active game
 	if stillExists && state != "finished" {
 		log.Printf("♻️ Active game for user %d\n", player.UserID)
-
+        
+		room.ReconnectPlayer(player)
 		// 🔥 tell frontend to show REJOIN
 		player.SendJSON("active_game", map[string]interface{}{
 			"stake": stake,
 			"state": state,
 		})
-
-		// 🔥 reconnect player
-		room.ReconnectPlayer(player)
-
-		// 🔥 restore game state
-		player.SendJSON("init", map[string]interface{}{
-			"called":    room.Called,
-			"countdown": room.Countdown,
-		})
-
-		// 🔥 restore card
-		if card := room.GetPlayerCard(player.UserID); card != nil {
-			player.SendJSON("card", map[string]interface{}{
-				"grid": card,
+        // 🔥 full sync state
+			player.SendJSON("init", map[string]interface{}{
+				"called":    called,
+				"countdown": countdown,
 			})
-		}
+		// 🔥 reconnect player
+		// OPTIONAL: replay numbers as live stream (CRITICAL FIX)
+			for _, n := range called {
+				player.SendJSON("number", n)
+			}
+         // restore card
+			if card := room.GetPlayerCard(player.UserID); card != nil {
+				player.SendJSON("card", map[string]interface{}{
+					"grid": card,
+				})
+			}
+
 	}
 }
 	// 🔥 START READ LOOP
