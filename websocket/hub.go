@@ -102,6 +102,7 @@ if room != nil {
 			player.SendJSON("init", map[string]interface{}{
 				"called":    called,
 				"countdown": countdown,
+				"card":      room.GetPlayerCard(player.UserID),
 			})
 		// 🔥 reconnect player
 		// OPTIONAL: replay numbers as live stream (CRITICAL FIX)
