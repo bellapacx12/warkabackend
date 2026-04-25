@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"bingo-backend/game"
-	"bingo-backend/models"
 	"bingo-backend/storage"
 	"bingo-backend/utils"
 	"log"
@@ -110,46 +109,19 @@ if room != nil {
 				player.SendJSON("number", n)
 			}
          // restore card
-		card := room.GetPlayerCard(player.UserID) 
+			if card := room.GetPlayerCard(player.UserID); card != nil {
+				log.Println(card)
+				player.SendJSON("card", map[string]interface{}{
+					"grid": card,
+				})
+			}
 
-if card != nil {
-    grid := convertToGrid(card)
-    log.Println(grid)
-    player.SendJSON("card", map[string]interface{}{
-        "grid": grid,
-    })
-}
 	}
 }
 	// 🔥 START READ LOOP
 	go readLoop(conn, player)
 }
-func convertToGrid(card *models.BingoCard) [][]any {
-	grid := make([][]any, 5)
 
-	for i := 0; i < 5; i++ {
-		grid[i] = make([]any, 5)
-	}
-
-	for i := 0; i < 5; i++ {
-		grid[i][0] = valueOrNil(card.B[i])
-		grid[i][1] = valueOrNil(card.I[i])
-		grid[i][2] = valueOrNil(card.N[i])
-		grid[i][3] = valueOrNil(card.G[i])
-		grid[i][4] = valueOrNil(card.O[i])
-	}
-
-	// ✅ FREE SPACE
-	grid[2][2] = "FREE"
-
-	return grid
-}
-func valueOrNil(v *int) any {
-	if v == nil {
-		return nil
-	}
-	return *v
-}
 // ==========================
 // READ LOOP
 // ==========================

@@ -28,7 +28,7 @@ type Room struct {
 	UsedCards map[int]bool
 	Mutex     sync.Mutex
 	Cards map[int][][]any // 🔥 ADD THIS
-    UserCard map[int] *models.BingoCard
+
 	State     string
 	Countdown int
 
@@ -73,8 +73,7 @@ func NewRoom(stake float64) *Room {
 	room := &Room{
 		Stake:     stake,
 		Players:   make(map[int]*Player),
-		Cards:     make(map[int][][]any),
-		UserCard:     make(map[int]*models.BingoCard),  // 🔥 IMPORTANT
+		Cards:     make(map[int][][]any), // 🔥 IMPORTANT
 		UsedCards: make(map[int]bool),
 		State:     "waiting",
 	}
@@ -239,14 +238,11 @@ func (r *Room) HandleSelectCard(userID int, cardID int) {
 		r.Mutex.Unlock()
 		return
 	}
-	
 
 	// ✅ SAVE CARD
 	player.Card = selected
-	r.UserCard[userID] = selected
-
 	r.UsedCards[cardID] = true
-    
+
 	// ✅ CONVERT TO GRID
 	grid := convertToGrid(selected)
 
@@ -474,11 +470,11 @@ func (r *Room) ReconnectPlayer(player *Player) {
 // ==========================
 // GET PLAYER CARD
 // ==========================
-func (r *Room) GetPlayerCard(userID int) *models.BingoCard {
+func (r *Room) GetPlayerCard(userID int) [][]any {
 	r.Mutex.Lock()
 	defer r.Mutex.Unlock()
 
-	card, ok := r.UserCard[userID]
+	card, ok := r.Cards[userID]
 	if !ok {
 		return nil
 	}
@@ -500,7 +496,7 @@ func (r *Room) ResetRound() {
 	// clear cards
 	r.UsedCards = make(map[int]bool)
 	r.Cards = make(map[int][][]any)
-    r.UserCard = make(map[int]*models.BingoCard)
+
 	// clear player cards
 	for _, p := range r.Players {
 		p.Card = nil
