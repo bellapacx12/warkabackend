@@ -178,7 +178,15 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 			if msg.Stake <= 0 {
 				continue
 			}
+            // 🔥 deduct first
+	newBalance, err := storage.DeductBalance(int64(player.UserID), msg.Stake)
+	if err != nil {
+		player.SendJSON("error", "Insufficient balance")
+		continue
+	}
 
+	// ✅ update frontend balance
+	player.SendJSON("balance", newBalance)
 			room := game.Manager.GetRoom(msg.Stake)
 			currentRoom = room
 

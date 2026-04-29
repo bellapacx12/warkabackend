@@ -68,3 +68,19 @@ func GetUserByID(id int64) (*models.User, error) {
 
 	return &user, nil
 }
+func DeductBalance(userID int64, amount float64) (float64, error) {
+	var newBalance float64
+
+	err := config.DB.QueryRow(`
+		UPDATE users
+		SET balance = balance - $1
+		WHERE id = $2 AND balance >= $1
+		RETURNING balance
+	`, amount, userID).Scan(&newBalance)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return newBalance, nil
+}
