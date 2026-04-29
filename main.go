@@ -38,6 +38,8 @@ func main() {
 
 	r.POST("/auth/telegram", handlers.RegisterTelegramUser)
     r.GET("/auth/telegram", handlers.GetTelegramUser)
+
+	r.GET("/api/balance", handlers.GetBalance)
 	// 🔐 Protected routes
 	auth := r.Group("/")
 	auth.Use(middleware.AuthMiddleware())
