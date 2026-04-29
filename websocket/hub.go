@@ -175,25 +175,33 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		// JOIN ROOM
 		// ==========================
 		case "join":
-			if msg.Stake <= 0 {
-				continue
-			}
-            // 🔥 deduct first
-	newBalance, err := storage.DeductBalance(int64(player.UserID), msg.Stake)
-	if err != nil {
-		player.SendJSON("error", "Insufficient balance")
+	if msg.Stake <= 0 {
 		continue
 	}
 
-	// ✅ update frontend balance
+	// 🔒 Deduct first (atomic)
+	newBalance, err := storage.DeductBalance(int64(player.UserID), msg.Stake)
+	if err != nil {
+		log.Println("❌ Deduct failed:", err)
+
+		player.SendJSON("error", map[string]string{
+			"message": "Insufficient balance",
+		})
+
+		// ❌ DO NOT join room
+		continue
+	}
+
+	// ✅ Only now proceed
+	room := game.Manager.GetRoom(msg.Stake)
+	currentRoom = room
+
+	room.AddPlayer(player)
+
+	// ✅ Update balance AFTER success
 	player.SendJSON("balance", newBalance)
-			room := game.Manager.GetRoom(msg.Stake)
-			currentRoom = room
 
-			room.AddPlayer(player)
-            
-			log.Printf("✅ User %d joined stake %.0f\n", player.UserID, msg.Stake)
-
+	log.Printf("✅ User %d joined stake %.0f\n", player.UserID, msg.Stake)
 		// ==========================
 		// SELECT CARD
 		// ==========================
