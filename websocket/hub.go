@@ -65,10 +65,7 @@ if err != nil {
     player.SendJSON("balance", user.Balance)
 	// 🔥 START WRITE PUMP (ONLY WRITER)
 	go player.WritePump()
-	go func() {
-    rooms := game.Manager.LobbySnapshot()
-    player.SendJSON("rooms", rooms)
-}()
+	
     
 
 // ==========================

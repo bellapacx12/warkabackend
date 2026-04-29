@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 type RoomManager struct {
@@ -14,6 +16,32 @@ type RoomManager struct {
 var Manager = &RoomManager{
 	Rooms: make(map[float64]*Room),
 }
+
+// ==========================
+// LOBBY CLIENTS
+// ==========================
+var LobbyClients = make(map[*websocket.Conn]bool)
+var LobbyMutex sync.Mutex
+
+func RegisterLobby(conn *websocket.Conn) {
+	LobbyMutex.Lock()
+	defer LobbyMutex.Unlock()
+
+	LobbyClients[conn] = true
+	log.Println("📡 Lobby client connected:", len(LobbyClients))
+}
+
+func UnregisterLobby(conn *websocket.Conn) {
+	LobbyMutex.Lock()
+	defer LobbyMutex.Unlock()
+
+	delete(LobbyClients, conn)
+	log.Println("❌ Lobby client disconnected:", len(LobbyClients))
+}
+
+// ==========================
+// ROOM MANAGEMENT
+// ==========================
 func (m *RoomManager) GetRoom(stake float64) *Room {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
@@ -27,10 +55,12 @@ func (m *RoomManager) GetRoom(stake float64) *Room {
 
 	return room
 }
+
 func (m *RoomManager) GetAllRooms() map[float64]*Room {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
 
+	// ⚠️ return copy to avoid race conditions
 	copy := make(map[float64]*Room)
 	for k, v := range m.Rooms {
 		copy[k] = v
@@ -38,45 +68,67 @@ func (m *RoomManager) GetAllRooms() map[float64]*Room {
 
 	return copy
 }
-func (m *RoomManager) LobbySnapshot() []map[string]interface{} {
 
-	m.Mutex.Lock()
-	roomsCopy := make(map[float64]*Room)
-	for k, v := range m.Rooms {
-		roomsCopy[k] = v
-	}
-	m.Mutex.Unlock()
+// ==========================
+// LOBBY BROADCAST
+// ==========================
+func BroadcastLobby() {
 
+	// ✅ ALWAYS ensure default rooms exist
 	defaultStakes := []float64{10, 20, 50, 100}
-
-	result := []map[string]interface{}{}
-
 	for _, stake := range defaultStakes {
-		room, ok := roomsCopy[stake]
-		if !ok || room == nil {
-			continue
-		}
+		Manager.GetRoom(stake)
+	}
+
+	// ✅ get rooms BEFORE locking lobby
+	roomsMap := Manager.GetAllRooms()
+
+	rooms := []map[string]interface{}{} // ✅ never nil
+
+	for stake, room := range roomsMap {
 
 		room.Mutex.Lock()
-
 		players := len(room.Players)
-		state := room.State
+		status := room.State
 		countdown := room.Countdown
-
 		room.Mutex.Unlock()
 
-		result = append(result, map[string]interface{}{
+		rooms = append(rooms, map[string]interface{}{
 			"stake":     stake,
 			"players":   players,
 			"win":       float64(players) * stake * 0.8,
-			"status":    state,
+			"status":    status,
 			"countdown": countdown,
 			"jackpot":   stake * 50,
 		})
 	}
 
-	return result
+	msg := map[string]interface{}{
+		"type": "rooms",
+		"data": rooms,
+	}
+
+	bytes, _ := json.Marshal(msg)
+
+	// ✅ lock only for writing
+	LobbyMutex.Lock()
+	defer LobbyMutex.Unlock()
+
+	for conn := range LobbyClients {
+		err := conn.WriteMessage(websocket.TextMessage, bytes)
+		if err != nil {
+			log.Println("❌ Lobby write error:", err)
+
+			conn.Close()
+			delete(LobbyClients, conn) // ✅ cleanup dead client
+		}
+	}
+
+	log.Println("📡 Lobby broadcast:", len(rooms), "rooms →", len(LobbyClients), "clients")
 }
+// ==========================
+// FIND PLAYER ROOM
+// ==========================
 func (m *RoomManager) FindPlayerRoom(userID int) *Room {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
@@ -93,36 +145,34 @@ func (m *RoomManager) FindPlayerRoom(userID int) *Room {
 
 	return nil
 }
-func BroadcastLobby() {
+func (m *RoomManager) LobbySnapshot() []map[string]interface{} {
+	m.Mutex.Lock()
+	defer m.Mutex.Unlock()
 
-	rooms := Manager.LobbySnapshot()
+	defaultStakes := []float64{10, 20, 50, 100}
 
-	msg := map[string]interface{}{
-		"type": "rooms",
-		"data": rooms,
-	}
+	rooms := []map[string]interface{}{}
 
-	bytes, err := json.Marshal(msg)
-	if err != nil {
-		log.Println("❌ Lobby marshal error:", err)
-		return
-	}
+	for _, stake := range defaultStakes {
+		room := m.Rooms[stake]
 
-	// 🔥 broadcast via game connections only
-	for _, room := range Manager.Rooms {
+		if room == nil {
+			continue
+		}
 
 		room.Mutex.Lock()
 
-		for _, player := range room.Players {
-			if player.Connected {
-				select {
-				case player.Send <- bytes:
-				default:
-					// avoid blocking slow clients
-				}
-			}
-		}
+		rooms = append(rooms, map[string]interface{}{
+			"stake":     stake,
+			"players":   len(room.Players),
+			"win":       float64(len(room.Players)) * stake * 0.8,
+			"status":    room.State,
+			"countdown": room.Countdown,
+			"jackpot":   stake * 50,
+		})
 
 		room.Mutex.Unlock()
 	}
+
+	return rooms
 }
