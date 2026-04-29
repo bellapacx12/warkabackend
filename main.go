@@ -61,9 +61,7 @@ func main() {
 		websocket.HandleWebSocket(c.Writer, c.Request)
 	})
 
-	r.GET("/ws/lobby", func(c *gin.Context) {
-		websocket.HandleLobbyWS(c.Writer, c.Request)
-	})
+	
 
 	log.Println("Server running on :8080")
 
