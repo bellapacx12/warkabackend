@@ -179,18 +179,14 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		continue
 	}
 
-	// 🔒 Deduct first (atomic)
+	// 💰 charge first (payment layer)
 	newBalance, err := storage.DeductBalance(int64(player.UserID), msg.Stake)
 	if err != nil {
-		log.Println("❌ Deduct failed:", err)
-
-		player.SendJSON("error", map[string]string{
-			"message": "Insufficient balance",
-		})
-
-		// ❌ DO NOT join room
+		player.SendJSON("error", "Insufficient balance")
 		continue
 	}
+
+	
 
 	// ✅ Only now proceed
 	room := game.Manager.GetRoom(msg.Stake)

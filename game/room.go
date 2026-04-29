@@ -133,45 +133,38 @@ func (r *Room) allPlayersHaveCards() bool {
 // ==========================
 func (r *Room) AddPlayer(p *Player) {
 	r.Mutex.Lock()
+	defer r.Mutex.Unlock()
 
+	// 🔒 already in room → just reconnect
 	if existing, ok := r.Players[p.UserID]; ok {
 		existing.Conn = p.Conn
 		existing.Send = p.Send
 		existing.Connected = true
 		existing.LastSeen = time.Now()
 
-		r.Mutex.Unlock()
-
 		log.Println("🔄 Reconnected:", p.UserID)
 
-		r.SendAvailableCards(existing)
-		r.SendTakenCards(existing)
-		r.SendGameState(existing)
-
+		go r.SendAvailableCards(existing)
+		go r.SendTakenCards(existing)
+		go r.SendGameState(existing)
 		go BroadcastLobby()
+
 		return
 	}
 
+	// 🆕 new player
 	p.Connected = true
 	p.LastSeen = time.Now()
 	r.Players[p.UserID] = p
 
-	count := len(r.Players)
-	state := r.State
-
-	r.Mutex.Unlock()
-
 	log.Printf("Player %d joined room %.0f\n", p.UserID, r.Stake)
 
-	r.Broadcast("players", count)
-
-	r.SendAvailableCards(p)
-	r.SendTakenCards(p)
-	r.SendGameState(p)
-
+	go r.SendAvailableCards(p)
+	go r.SendTakenCards(p)
+	go r.SendGameState(p)
 	go BroadcastLobby()
 
-	if state == "waiting" && r.enoughPlayers() && r.allPlayersHaveCards() {
+	if r.State == "waiting" && r.enoughPlayers() && r.allPlayersHaveCards() {
 		go r.StartCountdown()
 	}
 }
