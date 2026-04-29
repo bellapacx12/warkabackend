@@ -9,17 +9,27 @@ import (
 )
 
 func GetBalance(c *gin.Context) {
+	// ✅ correct way in Gin
 	token := c.Query("token")
+
+	// fallback to Authorization header (better practice)
+	if token == "" {
+		token = c.GetHeader("Authorization")
+	}
 
 	userID, err := utils.ValidateToken(token)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "unauthorized",
+		})
 		return
 	}
 
 	user, err := storage.GetUserByID(int64(userID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "user not found",
+		})
 		return
 	}
 
