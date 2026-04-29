@@ -4,23 +4,28 @@ import (
 	"bingo-backend/storage"
 	"bingo-backend/utils"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 func GetBalance(c *gin.Context) {
-	// ✅ correct way in Gin
-	token := c.Query("token")
+	authHeader := c.GetHeader("Authorization")
 
-	// fallback to Authorization header (better practice)
-	if token == "" {
-		token = c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "missing token",
+		})
+		return
 	}
+
+	// 🔥 extract "Bearer token"
+	token := strings.TrimPrefix(authHeader, "Bearer ")
 
 	userID, err := utils.ValidateToken(token)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "unauthorized",
+			"error": "invalid token",
 		})
 		return
 	}
