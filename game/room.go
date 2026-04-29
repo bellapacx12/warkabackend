@@ -477,33 +477,44 @@ func (r *Room) GetPlayerCard(userID int) [][]any {
 func (r *Room) ResetRound() {
 	r.Mutex.Lock()
 
-	log.Println("🔄 Resetting round...")
+	log.Println("🔄 Resetting round (FULL CLEAN)...")
 
-	// reset game state
+	// ==========================
+	// RESET GAME STATE
+	// ==========================
 	r.State = "waiting"
 	r.Countdown = 0
 	r.Numbers = nil
 	r.Called = []int{}
 
-	// clear cards
+	// ==========================
+	// CLEAR ROOM DATA
+	// ==========================
 	r.UsedCards = make(map[int]bool)
 	r.Cards = make(map[int][][]any)
 
-	// clear player cards
+	// ==========================
+	// CLEAN PLAYERS (IMPORTANT FIX)
+	// ==========================
 	for _, p := range r.Players {
-		p.Card = nil
+		if p != nil {
+			p.Card = nil
+			p.Connected = false
+		}
 	}
+
+	// ❗ FULL REMOVE PLAYERS FROM ROOM
+	r.Players = make(map[int]*Player)
 
 	r.Mutex.Unlock()
 
-	// ✅ notify game reset
+	// ==========================
+	// NOTIFY CLIENTS
+	// ==========================
 	r.Broadcast("round_reset", nil)
 
-	// ✅ 🔥 refresh lobby for ALL players
-	for _, p := range r.getActivePlayers() {
-		r.SendAvailableCards(p)
-		r.SendTakenCards(p)
-	}
-
+	// ==========================
+	// UPDATE LOBBY
+	// ==========================
 	go BroadcastLobby()
 }
