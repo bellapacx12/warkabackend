@@ -105,7 +105,7 @@ player.SendJSON("card", card)
 			player.SendJSON("init", map[string]interface{}{
 				"called":    called,
 				"countdown": countdown,
-				"card":      room.GetPlayerCard(player.UserID),
+				
 			})
 		// 🔥 reconnect player
 		// OPTIONAL: replay numbers as live stream (CRITICAL FIX)
@@ -228,7 +228,7 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 currentRoom.Broadcast("game_finished", nil)
 
 	go func(r *game.Room) {
-		time.Sleep(5 * time.Second)
+		time.Sleep(3 * time.Second)
 		r.ResetRound()
 	}(currentRoom)
 

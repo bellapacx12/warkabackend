@@ -483,7 +483,6 @@ func (r *Room) GetPlayerCard(userID int) [][]any {
 }
 func (r *Room) ResetRound() {
 	r.Mutex.Lock()
-	defer r.Mutex.Unlock()
 
 	log.Println("🔄 Resetting round...")
 
@@ -502,6 +501,16 @@ func (r *Room) ResetRound() {
 		p.Card = nil
 	}
 
-	// notify players
-	go r.Broadcast("round_reset", "new round started")
+	r.Mutex.Unlock()
+
+	// ✅ notify game reset
+	r.Broadcast("round_reset", nil)
+
+	// ✅ 🔥 refresh lobby for ALL players
+	for _, p := range r.getActivePlayers() {
+		r.SendAvailableCards(p)
+		r.SendTakenCards(p)
+	}
+
+	go BroadcastLobby()
 }
