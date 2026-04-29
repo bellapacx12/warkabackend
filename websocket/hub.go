@@ -98,6 +98,8 @@ if room != nil {
 			"stake": stake,
 			"state": state,
 		})
+		card := room.GetPlayerCard(player.UserID)
+log.Println("♻️ Rejoin card:", card)
         // 🔥 full sync state
 			player.SendJSON("init", map[string]interface{}{
 				"called":    called,
