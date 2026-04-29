@@ -65,6 +65,10 @@ if err != nil {
     player.SendJSON("balance", user.Balance)
 	// 🔥 START WRITE PUMP (ONLY WRITER)
 	go player.WritePump()
+	go func() {
+    rooms := game.Manager.LobbySnapshot()
+    player.SendJSON("rooms", rooms)
+}()
     
 
 // ==========================
@@ -211,12 +215,6 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		// ==========================
 		// 🔥 BINGO (NEW)
 		// ==========================
-		case "lobby":
-			rooms := game.Manager.LobbySnapshot()
-			player.SendJSON("rooms", rooms)
-
-	player.SendJSON("rooms", rooms)
-
 	     case "bingo":
 	if currentRoom == nil {
 		continue
