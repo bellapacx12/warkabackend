@@ -119,6 +119,7 @@ if room != nil {
 		player.SendJSON("init", map[string]interface{}{
 			"called":    called,
 			"countdown": countdown,
+			"grid": player.Card,
 		})
 
 		// 4. REPLAY NUMBERS
