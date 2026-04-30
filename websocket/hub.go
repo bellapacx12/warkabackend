@@ -88,7 +88,7 @@ if room != nil {
 	stake := room.Stake
 	called := append([]int{}, room.Called...)
 	countdown := room.Countdown
-
+    card := room.GetPlayerCard(player.UserID)
 	room.Mutex.Unlock()
 
 	if stillExists {
@@ -100,6 +100,7 @@ if room != nil {
 		player.SendJSON("active_game", map[string]interface{}{
 			"stake": stake,
 			"state": state,
+			"grid": card,
 		})
 
 		// 2. CARD (ONLY SOURCE)
