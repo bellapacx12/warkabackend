@@ -180,25 +180,7 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		// ==========================
 		// JOIN ROOM
 		// ==========================
-		case "rejoin":
-	if msg.Stake <= 0 {
-		continue
-	}
-
-	room := game.Manager.GetRoom(msg.Stake)
-
-	room.Mutex.Lock()
-	card := room.GetPlayerCard(player.UserID)
-	room.Mutex.Unlock()
-
-	if card == nil {
-		player.SendJSON("error", "No active card")
-		continue
-	}
-
-	player.SendJSON("card", map[string]interface{}{
-		"card": card,
-	})
+		
 		case "join":
 	if msg.Stake <= 0 {
 		continue
