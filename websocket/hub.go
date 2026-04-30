@@ -103,14 +103,18 @@ if room != nil {
 		})
 
 		// 2. CARD (ONLY SOURCE)
-		card := room.GetPlayerCard(player.UserID)
-		if card != nil {
-			log.Println(card)
-			player.SendJSON("card", map[string]interface{}{
-				"grid": card,
-			})
-		}
+		go func(p *game.Player, r *game.Room) {
+	time.Sleep(100 * time.Millisecond)
 
+	card := r.GetPlayerCard(p.UserID)
+	if card == nil {
+		return
+	}
+
+	p.SendJSON("card", map[string]interface{}{
+		"grid": card,
+	})
+}(player, room)
 		// 3. INIT STATE
 		player.SendJSON("init", map[string]interface{}{
 			"called":    called,
