@@ -180,6 +180,32 @@ func readLoop(conn *websocket.Conn, player *game.Player) {
 		// ==========================
 		// JOIN ROOM
 		// ==========================
+		case "rejoin":
+	if msg.Stake <= 0 {
+		continue
+	}
+
+	room := game.Manager.GetRoom(msg.Stake)
+	currentRoom = room
+
+	room.Mutex.Lock()
+	_, exists := room.Players[player.UserID]
+	room.Mutex.Unlock()
+
+	if !exists {
+		player.SendJSON("error", "Game not found")
+		continue
+	}
+
+	// 🔥 reconnect player (important for WS)
+	room.ReconnectPlayer(player)
+
+	// ✅ ONLY send card
+	card := room.GetPlayerCard(player.UserID)
+	player.SendJSON("card", card)
+
+	log.Printf("♻️ User %d rejoined (card only) stake %.0f\n", player.UserID, msg.Stake)
+	
 		case "join":
 	if msg.Stake <= 0 {
 		continue
