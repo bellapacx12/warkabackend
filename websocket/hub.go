@@ -105,6 +105,7 @@ if room != nil {
 		// 2. CARD (ONLY SOURCE)
 		card := room.GetPlayerCard(player.UserID)
 		if card != nil {
+			log.Println(card)
 			player.SendJSON("card", map[string]interface{}{
 				"grid": card,
 			})
